@@ -1,0 +1,29 @@
+name: 'run_tests_on_chip_action'
+description: 'Running tests on chip'
+author: 'aps-m'
+
+# Add your action's branding here. This will appear on the GitHub Marketplace.
+branding:
+  icon: 'debug'
+  color: 'red'
+
+# Define your inputs here.
+inputs:
+  gdb_target_host:
+    description: 'Remote target host'
+    required: true
+    default: ':3333'
+
+  executable:
+    description: 'Path to executable file'
+    required: true
+    default: ''
+
+  timeout:
+    description: 'Timeout in seconds'
+    required: true
+    default: 300
+
+runs:
+  using: node20
+  main: dist/index.js
