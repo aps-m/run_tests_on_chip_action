@@ -24791,6 +24791,8 @@ async function run() {
                 });
                 gdb.on('close', code => {
                     console.log(`GDB finished with code: ${code}`);
+                    gdb.stdin.write(`exit\n`);
+                    gdb.stdin.write(`y\n`);
                     resolve();
                 });
                 gdb.on('error', err => {
@@ -24813,7 +24815,7 @@ async function run() {
             });
         }
         const messageToWaitFor = 'Test complited';
-        runGDBAndWaitForMessage(absolute_executable_path, messageToWaitFor)
+        await runGDBAndWaitForMessage(absolute_executable_path, messageToWaitFor)
             .then(() => console.log('Tests finished'))
             .catch(err => console.error('Error:', err));
     }
