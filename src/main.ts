@@ -22,7 +22,7 @@ export async function run(): Promise<void> {
 
     console.log(`Executable absolute: ${absolute_executable_path}`)
 
-    async function runGDBAndWaitForMessage(
+    function runGDBAndWaitForMessage(
       executable: string,
       targetMessage: string
     ) {
@@ -103,9 +103,14 @@ export async function run(): Promise<void> {
 
     const messageToWaitFor = 'Test complited'
 
-    await runGDBAndWaitForMessage(absolute_executable_path, messageToWaitFor)
+    const awaiter = runGDBAndWaitForMessage(
+      absolute_executable_path,
+      messageToWaitFor
+    )
       .then(() => console.log('Tests finished'))
       .catch(err => console.error('Error:', err))
+
+    await awaiter
 
     console.log('Finished...')
   } catch (error) {

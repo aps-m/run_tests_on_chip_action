@@ -24752,7 +24752,7 @@ async function run() {
         console.log('Started...');
         console.log(`Executable: ${executable}`);
         console.log(`Executable absolute: ${absolute_executable_path}`);
-        async function runGDBAndWaitForMessage(executable, targetMessage) {
+        function runGDBAndWaitForMessage(executable, targetMessage) {
             return new Promise((resolve, reject) => {
                 const gdb = (0, child_process_1.spawn)('arm-none-eabi-gdb', [executable], {
                     stdio: ['pipe', 'pipe', 'pipe']
@@ -24815,9 +24815,10 @@ async function run() {
             });
         }
         const messageToWaitFor = 'Test complited';
-        await runGDBAndWaitForMessage(absolute_executable_path, messageToWaitFor)
+        const awaiter = runGDBAndWaitForMessage(absolute_executable_path, messageToWaitFor)
             .then(() => console.log('Tests finished'))
             .catch(err => console.error('Error:', err));
+        await awaiter;
         console.log('Finished...');
     }
     catch (error) {
