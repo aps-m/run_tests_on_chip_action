@@ -22,7 +22,7 @@ export async function run(): Promise<void> {
 
     console.log(`Executable absolute: ${absolute_executable_path}`)
 
-    function runGDBAndWaitForMessage(
+    async function runGDBAndWaitForMessage(
       executable: string,
       targetMessage: string
     ) {
@@ -106,6 +106,8 @@ export async function run(): Promise<void> {
     await runGDBAndWaitForMessage(absolute_executable_path, messageToWaitFor)
       .then(() => console.log('Tests finished'))
       .catch(err => console.error('Error:', err))
+
+    console.log('Finished...')
   } catch (error) {
     // Fail the workflow run if an error occurs
     if (error instanceof Error) core.setFailed(error.message)
