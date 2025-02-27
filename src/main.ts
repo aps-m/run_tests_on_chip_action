@@ -13,6 +13,7 @@ export async function run(): Promise<void> {
     const timeout: number = Number(core.getInput('timeout'))
     const gdb_target_host: string = core.getInput('gdb_target_host')
     const executable: string = core.getInput('executable')
+    const wait_for_msg: string = core.getInput('wait_for_msg')
 
     const absolute_executable_path = path.resolve(executable)
 
@@ -42,11 +43,13 @@ export async function run(): Promise<void> {
             console.error(`❌ ${line}`)
           }
 
-          if (line.startsWith(targetMessage)) {
-            console.log('Tag message was found!')
-            clearTimeout(timeoutHandle)
-            gdb.kill()
-            resolve()
+          if (targetMessage !== '') {
+            if (line.startsWith(targetMessage)) {
+              console.log('Tag message was found!')
+              clearTimeout(timeoutHandle)
+              gdb.kill()
+              resolve()
+            }
           }
         }
 
@@ -87,9 +90,18 @@ export async function run(): Promise<void> {
         gdb.stdin.write(`target remote ${gdb_target_host}\n`)
         gdb.stdin.write(`set pagination off\n`)
         gdb.stdin.write(`load\n`)
-        gdb.stdin.write(`monitor arm semihosting enable\n`)
-        gdb.stdin.write(`monitor arm semihosting_fileio enable\n`)
-        gdb.stdin.write(`continue\n`)
+
+        if (wait_for_msg === '') {
+          console.log('No message to wait for. Finishing process...')
+          gdb.stdin.write(`monitor reset run\n`)
+          gdb.stdin.write(`detach\n`)
+          gdb.stdin.write(`exit\n`)
+        } else {
+          console.log('Waiting for message:', wait_for_msg)
+          gdb.stdin.write(`monitor arm semihosting enable\n`)
+          gdb.stdin.write(`monitor arm semihosting_fileio enable\n`)
+          gdb.stdin.write(`continue\n`)
+        }
 
         let timeoutHandle = setTimeout(() => {
           console.log('Timeout error. Finishing process...')
@@ -101,9 +113,9 @@ export async function run(): Promise<void> {
       })
     }
 
-    const messageToWaitFor = 'Test complited'
+    // const messageToWaitFor = 'Test complited'
 
-    await runGDBAndWaitForMessage(absolute_executable_path, messageToWaitFor)
+    await runGDBAndWaitForMessage(absolute_executable_path, wait_for_msg)
       .then(() => console.log('Tests finished'))
       .catch(err => console.error('Error:', err))
 

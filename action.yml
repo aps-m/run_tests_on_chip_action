@@ -24,6 +24,11 @@ inputs:
     required: true
     default: 300
 
+  wait_for_msg:
+    description: 'Target log message for exit'
+    required: true
+    default: ''
+
 runs:
   using: node20
   main: dist/index.js

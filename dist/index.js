@@ -24748,6 +24748,7 @@ async function run() {
         const timeout = Number(core.getInput('timeout'));
         const gdb_target_host = core.getInput('gdb_target_host');
         const executable = core.getInput('executable');
+        const wait_for_msg = core.getInput('wait_for_msg');
         const absolute_executable_path = path.resolve(executable);
         console.log('Started...');
         console.log(`Executable: ${executable}`);
@@ -24767,11 +24768,13 @@ async function run() {
                         // line.includes("pass")
                         console.error(`❌ ${line}`);
                     }
-                    if (line.startsWith(targetMessage)) {
-                        console.log('Tag message was found!');
-                        clearTimeout(timeoutHandle);
-                        gdb.kill();
-                        resolve();
+                    if (targetMessage !== '') {
+                        if (line.startsWith(targetMessage)) {
+                            console.log('Tag message was found!');
+                            clearTimeout(timeoutHandle);
+                            gdb.kill();
+                            resolve();
+                        }
                     }
                 }
                 function handleStreamData(buffer, chunk, isError) {
@@ -24802,9 +24805,18 @@ async function run() {
                 gdb.stdin.write(`target remote ${gdb_target_host}\n`);
                 gdb.stdin.write(`set pagination off\n`);
                 gdb.stdin.write(`load\n`);
-                gdb.stdin.write(`monitor arm semihosting enable\n`);
-                gdb.stdin.write(`monitor arm semihosting_fileio enable\n`);
-                gdb.stdin.write(`continue\n`);
+                if (wait_for_msg === '') {
+                    console.log('No message to wait for. Finishing process...');
+                    gdb.stdin.write(`monitor reset run\n`);
+                    gdb.stdin.write(`detach\n`);
+                    gdb.stdin.write(`exit\n`);
+                }
+                else {
+                    console.log('Waiting for message:', wait_for_msg);
+                    gdb.stdin.write(`monitor arm semihosting enable\n`);
+                    gdb.stdin.write(`monitor arm semihosting_fileio enable\n`);
+                    gdb.stdin.write(`continue\n`);
+                }
                 let timeoutHandle = setTimeout(() => {
                     console.log('Timeout error. Finishing process...');
                     gdb.stdin.write(`exit\n`);
@@ -24814,8 +24826,8 @@ async function run() {
                 }, timeout * 1000);
             });
         }
-        const messageToWaitFor = 'Test complited';
-        await runGDBAndWaitForMessage(absolute_executable_path, messageToWaitFor)
+        // const messageToWaitFor = 'Test complited'
+        await runGDBAndWaitForMessage(absolute_executable_path, wait_for_msg)
             .then(() => console.log('Tests finished'))
             .catch(err => console.error('Error:', err));
         // await awaiter
