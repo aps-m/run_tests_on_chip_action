@@ -24810,6 +24810,7 @@ async function run() {
                     gdb.stdin.write(`monitor reset run\n`);
                     gdb.stdin.write(`detach\n`);
                     gdb.stdin.write(`exit\n`);
+                    gdb.kill(); // Завершаем процесс GDB
                 }
                 else {
                     console.log('Waiting for message:', wait_for_msg);
