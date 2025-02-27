@@ -41,6 +41,8 @@ export async function run(): Promise<void> {
           } else if (line.startsWith('Fail')) {
             // line.includes("pass")
             console.error(`❌ ${line}`)
+          } else {
+            console.log(line)
           }
 
           if (targetMessage !== '') {
@@ -49,6 +51,15 @@ export async function run(): Promise<void> {
               clearTimeout(timeoutHandle)
               gdb.kill()
               resolve()
+            }
+          } else {
+            if (line.startsWith('Transfer rate:')) {
+              clearTimeout(timeoutHandle)
+
+              setTimeout(() => {
+                gdb.kill() // Завершаем процесс GDB
+                resolve()
+              }, 2000)
             }
           }
         }
@@ -92,11 +103,12 @@ export async function run(): Promise<void> {
         gdb.stdin.write(`load\n`)
 
         if (wait_for_msg === '') {
-          console.log('No message to wait for. Finishing process...')
+          console.log(
+            'No message to wait for. Waiting elf file load finished...'
+          )
           gdb.stdin.write(`monitor reset run\n`)
           gdb.stdin.write(`detach\n`)
           gdb.stdin.write(`exit\n`)
-          gdb.kill() // Завершаем процесс GDB
         } else {
           console.log('Waiting for message:', wait_for_msg)
           gdb.stdin.write(`monitor arm semihosting enable\n`)
