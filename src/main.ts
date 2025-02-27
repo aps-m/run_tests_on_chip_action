@@ -36,10 +36,10 @@ export async function run(): Promise<void> {
 
         function processLine(line: string, isError: boolean) {
           if (line.startsWith('Pass')) {
-            console.log(line)
+            console.log(`✅ ${line}`)
           } else if (line.startsWith('Fail')) {
             // line.includes("pass")
-            console.error(line)
+            console.error(`❌ ${line}`)
           }
 
           if (line.startsWith(targetMessage)) {
