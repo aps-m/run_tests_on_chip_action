@@ -24761,11 +24761,11 @@ async function run() {
                 let stderrBuffer = '';
                 function processLine(line, isError) {
                     if (line.startsWith('Pass')) {
-                        console.log(line);
+                        console.log(`✅ ${line}`);
                     }
                     else if (line.startsWith('Fail')) {
                         // line.includes("pass")
-                        console.error(line);
+                        console.error(`❌ ${line}`);
                     }
                     if (line.startsWith(targetMessage)) {
                         console.log('Tag message was found!');
