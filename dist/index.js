@@ -24760,6 +24760,7 @@ async function run() {
                 });
                 let stdoutBuffer = '';
                 let stderrBuffer = '';
+                let failed_count = 0;
                 function processLine(line, isError) {
                     if (line.startsWith('Pass')) {
                         console.log(`✅ ${line}`);
@@ -24767,6 +24768,7 @@ async function run() {
                     else if (line.startsWith('Fail')) {
                         // line.includes("pass")
                         console.error(`❌ ${line}`);
+                        failed_count++;
                     }
                     else {
                         console.log(line);
@@ -24776,6 +24778,9 @@ async function run() {
                             console.log('Tag message was found!');
                             clearTimeout(timeoutHandle);
                             gdb.kill();
+                            if (failed_count > 0) {
+                                reject(new Error(`Failed tests count: ${failed_count}`));
+                            }
                             resolve();
                         }
                     }
@@ -24840,8 +24845,13 @@ async function run() {
         }
         // const messageToWaitFor = 'Test complited'
         await runGDBAndWaitForMessage(absolute_executable_path, wait_for_msg)
-            .then(() => console.log('Tests finished'))
-            .catch(err => console.error('Error:', err));
+            .then(() => {
+            console.log('Tests finished');
+        })
+            .catch(err => {
+            console.error('Error:', err);
+            core.setFailed(err.message);
+        });
         // await awaiter
         console.log('Finished...');
     }
