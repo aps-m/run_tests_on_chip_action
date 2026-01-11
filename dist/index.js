@@ -24762,11 +24762,10 @@ async function run() {
                 let stderrBuffer = '';
                 let failed_count = 0;
                 function processLine(line, isError) {
-                    if (line.startsWith('Pass')) {
+                    if (line.startsWith('Pass [')) {
                         console.log(`✅ ${line}`);
                     }
-                    else if (line.startsWith('Fail')) {
-                        // line.includes("pass")
+                    else if (line.startsWith('Fail [')) {
                         console.error(`❌ ${line}`);
                         failed_count++;
                     }
