@@ -9,11 +9,17 @@ import * as path from 'path'
  */
 export async function run(): Promise<void> {
   try {
-    // const ms: string = core.getInput('milliseconds')
     const timeout: number = Number(core.getInput('timeout'))
     const gdb_target_host: string = core.getInput('gdb_target_host')
     const executable: string = core.getInput('executable')
     const wait_for_msg: string = core.getInput('wait_for_msg')
+
+    // Валидация таймаута
+    if (isNaN(timeout) || timeout <= 0) {
+      throw new Error(
+        `Invalid timeout value: ${timeout}. Must be a positive number.`
+      )
+    }
 
     const absolute_executable_path = path.resolve(executable)
 
@@ -36,6 +42,7 @@ export async function run(): Promise<void> {
         let stderrBuffer = ''
 
         let failed_count = 0
+        let targetMessageFound = false
 
         function processLine(line: string, isError: boolean) {
           if (line.startsWith('Pass [')) {
@@ -50,20 +57,15 @@ export async function run(): Promise<void> {
           if (targetMessage !== '') {
             if (line.startsWith(targetMessage)) {
               console.log('Tag message was found!')
+              targetMessageFound = true
               clearTimeout(timeoutHandle)
               gdb.kill()
-              if (failed_count > 0) {
-                reject(new Error(`Failed tests count: ${failed_count}`))
-              }
-              resolve()
             }
           } else {
             if (line.startsWith('Transfer rate:')) {
-              clearTimeout(timeoutHandle)
-
               setTimeout(() => {
-                gdb.kill() // Завершаем процесс GDB
-                resolve()
+                clearTimeout(timeoutHandle)
+                gdb.kill()
               }, 2000)
             }
           }
@@ -84,22 +86,29 @@ export async function run(): Promise<void> {
         }
 
         gdb.stdout.on('data', data => {
-          stderrBuffer = handleStreamData(stderrBuffer, data, false)
+          stdoutBuffer = handleStreamData(stdoutBuffer, data, false)
         })
 
         gdb.stderr.on('data', data => {
-          stdoutBuffer = handleStreamData(stdoutBuffer, data, true)
+          stderrBuffer = handleStreamData(stderrBuffer, data, true)
         })
 
         gdb.on('close', code => {
           console.log(`GDB finished with code: ${code}`)
-          gdb.stdin.write(`exit\n`)
-          gdb.stdin.write(`y\n`)
-          resolve()
+          clearTimeout(timeoutHandle)
+
+          if (targetMessage !== '' && !targetMessageFound) {
+            reject(new Error(`Target message "${targetMessage}" was not found`))
+          } else if (failed_count > 0) {
+            reject(new Error(`Failed tests count: ${failed_count}`))
+          } else {
+            resolve()
+          }
         })
 
         gdb.on('error', err => {
           console.error('Error while GDB was starting... error message:', err)
+          clearTimeout(timeoutHandle)
           reject(err)
         })
 
@@ -121,17 +130,15 @@ export async function run(): Promise<void> {
           gdb.stdin.write(`continue\n`)
         }
 
-        let timeoutHandle = setTimeout(() => {
+        const timeoutHandle = setTimeout(() => {
           console.log('Timeout error. Finishing process...')
-          gdb.stdin.write(`exit\n`)
-          gdb.stdin.write(`y\n`)
-          gdb.kill() // Завершаем процесс GDB
-          reject(new Error('Timeout error'))
+          gdb.kill()
+          reject(
+            new Error(`Timeout error: process exceeded ${timeout} seconds`)
+          )
         }, timeout * 1000)
       })
     }
-
-    // const messageToWaitFor = 'Test complited'
 
     await runGDBAndWaitForMessage(absolute_executable_path, wait_for_msg)
       .then(() => {
@@ -141,8 +148,6 @@ export async function run(): Promise<void> {
         console.error('Error:', err)
         core.setFailed(err.message)
       })
-
-    // await awaiter
 
     console.log('Finished...')
   } catch (error) {
