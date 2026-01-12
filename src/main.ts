@@ -1,13 +1,36 @@
 import * as core from '@actions/core'
 import { wait } from './wait'
-import { spawn } from 'child_process'
+import { spawn, ChildProcess } from 'child_process'
 import * as path from 'path'
+
+// Глобальная ссылка на GDB процесс для обработки сигналов отмены
+let gdbProcess: ChildProcess | null = null
+let isAborted = false
+
+// Обработчик сигналов для немедленного завершения при отмене
+function setupSignalHandlers(): void {
+  const handleSignal = (signal: string): void => {
+    console.log(`\nReceived ${signal} signal. Aborting...`)
+    isAborted = true
+    if (gdbProcess) {
+      gdbProcess.kill('SIGKILL')
+      gdbProcess = null
+    }
+    process.exit(1)
+  }
+
+  process.on('SIGINT', () => handleSignal('SIGINT'))
+  process.on('SIGTERM', () => handleSignal('SIGTERM'))
+}
 
 /**
  * The main function for the action.
  * @returns {Promise<void>} Resolves when the action is complete.
  */
 export async function run(): Promise<void> {
+  // Настраиваем обработчики сигналов в начале
+  setupSignalHandlers()
+
   try {
     const timeout: number = Number(core.getInput('timeout'))
     const gdb_target_host: string = core.getInput('gdb_target_host')
@@ -34,9 +57,18 @@ export async function run(): Promise<void> {
       targetMessage: string
     ) {
       return new Promise<void>((resolve, reject) => {
+        // Проверяем, не был ли уже получен сигнал отмены
+        if (isAborted) {
+          reject(new Error('Action was cancelled'))
+          return
+        }
+
         const gdb = spawn('arm-none-eabi-gdb', [executable], {
           stdio: ['pipe', 'pipe', 'pipe']
         })
+
+        // Сохраняем ссылку на процесс для обработчиков сигналов
+        gdbProcess = gdb
 
         let stdoutBuffer = ''
         let stderrBuffer = ''
@@ -96,8 +128,11 @@ export async function run(): Promise<void> {
         gdb.on('close', code => {
           console.log(`GDB finished with code: ${code}`)
           clearTimeout(timeoutHandle)
+          gdbProcess = null
 
-          if (targetMessage !== '' && !targetMessageFound) {
+          if (isAborted) {
+            reject(new Error('Action was cancelled'))
+          } else if (targetMessage !== '' && !targetMessageFound) {
             reject(new Error(`Target message "${targetMessage}" was not found`))
           } else if (failed_count > 0) {
             reject(new Error(`Failed tests count: ${failed_count}`))
@@ -109,6 +144,7 @@ export async function run(): Promise<void> {
         gdb.on('error', err => {
           console.error('Error while GDB was starting... error message:', err)
           clearTimeout(timeoutHandle)
+          gdbProcess = null
           reject(err)
         })
 

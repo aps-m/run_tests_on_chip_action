@@ -24961,11 +24961,30 @@ exports.run = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 const child_process_1 = __nccwpck_require__(2081);
 const path = __importStar(__nccwpck_require__(1017));
+// Глобальная ссылка на GDB процесс для обработки сигналов отмены
+let gdbProcess = null;
+let isAborted = false;
+// Обработчик сигналов для немедленного завершения при отмене
+function setupSignalHandlers() {
+    const handleSignal = (signal) => {
+        console.log(`\nReceived ${signal} signal. Aborting...`);
+        isAborted = true;
+        if (gdbProcess) {
+            gdbProcess.kill('SIGKILL');
+            gdbProcess = null;
+        }
+        process.exit(1);
+    };
+    process.on('SIGINT', () => handleSignal('SIGINT'));
+    process.on('SIGTERM', () => handleSignal('SIGTERM'));
+}
 /**
  * The main function for the action.
  * @returns {Promise<void>} Resolves when the action is complete.
  */
 async function run() {
+    // Настраиваем обработчики сигналов в начале
+    setupSignalHandlers();
     try {
         const timeout = Number(core.getInput('timeout'));
         const gdb_target_host = core.getInput('gdb_target_host');
@@ -24981,9 +25000,16 @@ async function run() {
         console.log(`Executable absolute: ${absolute_executable_path}`);
         async function runGDBAndWaitForMessage(executable, targetMessage) {
             return new Promise((resolve, reject) => {
+                // Проверяем, не был ли уже получен сигнал отмены
+                if (isAborted) {
+                    reject(new Error('Action was cancelled'));
+                    return;
+                }
                 const gdb = (0, child_process_1.spawn)('arm-none-eabi-gdb', [executable], {
                     stdio: ['pipe', 'pipe', 'pipe']
                 });
+                // Сохраняем ссылку на процесс для обработчиков сигналов
+                gdbProcess = gdb;
                 let stdoutBuffer = '';
                 let stderrBuffer = '';
                 let failed_count = 0;
@@ -25001,7 +25027,7 @@ async function run() {
                     }
                     if (targetMessage !== '') {
                         if (line.startsWith(targetMessage)) {
-                            console.log('Tag message was found! Finishing tests...');
+                            console.log('Tag message was found!');
                             targetMessageFound = true;
                             clearTimeout(timeoutHandle);
                             gdb.kill();
@@ -25034,7 +25060,11 @@ async function run() {
                 gdb.on('close', code => {
                     console.log(`GDB finished with code: ${code}`);
                     clearTimeout(timeoutHandle);
-                    if (targetMessage !== '' && !targetMessageFound) {
+                    gdbProcess = null;
+                    if (isAborted) {
+                        reject(new Error('Action was cancelled'));
+                    }
+                    else if (targetMessage !== '' && !targetMessageFound) {
                         reject(new Error(`Target message "${targetMessage}" was not found`));
                     }
                     else if (failed_count > 0) {
@@ -25047,6 +25077,7 @@ async function run() {
                 gdb.on('error', err => {
                     console.error('Error while GDB was starting... error message:', err);
                     clearTimeout(timeoutHandle);
+                    gdbProcess = null;
                     reject(err);
                 });
                 gdb.stdin.write(`target remote ${gdb_target_host}\n`);
@@ -25073,7 +25104,7 @@ async function run() {
         }
         await runGDBAndWaitForMessage(absolute_executable_path, wait_for_msg)
             .then(() => {
-            console.log('Tests finished successfully');
+            console.log('Tests finished');
         })
             .catch(err => {
             console.error('Error:', err);
