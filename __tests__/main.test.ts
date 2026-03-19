@@ -1,89 +1,133 @@
-/**
- * Unit tests for the action's main functionality, src/main.ts
- *
- * These should be run as if the action was called from a workflow.
- * Specifically, the inputs listed in `action.yml` should be set as environment
- * variables following the pattern `INPUT_<INPUT_NAME>`.
- */
-
+import { EventEmitter } from 'events'
 import * as core from '@actions/core'
+import * as path from 'path'
+import { spawn, ChildProcess } from 'child_process'
 import * as main from '../src/main'
 
-// Mock the action's main function
-const runMock = jest.spyOn(main, 'run')
+jest.mock('child_process', () => ({
+  spawn: jest.fn()
+}))
 
-// Other utilities
-const timeRegex = /^\d{2}:\d{2}:\d{2}/
+type MockGdbProcess = EventEmitter & {
+  stdout: EventEmitter
+  stderr: EventEmitter
+  stdin: {
+    write: jest.Mock
+  }
+  kill: jest.Mock
+}
 
-// Mock the GitHub Actions core library
-let debugMock: jest.SpiedFunction<typeof core.debug>
-let errorMock: jest.SpiedFunction<typeof core.error>
 let getInputMock: jest.SpiedFunction<typeof core.getInput>
 let setFailedMock: jest.SpiedFunction<typeof core.setFailed>
-let setOutputMock: jest.SpiedFunction<typeof core.setOutput>
+const spawnMock = jest.mocked(spawn)
+
+function createMockGdbProcess(): MockGdbProcess {
+  const processMock = new EventEmitter() as MockGdbProcess
+
+  processMock.stdout = new EventEmitter()
+  processMock.stderr = new EventEmitter()
+  processMock.stdin = {
+    write: jest.fn()
+  }
+  processMock.kill = jest.fn(() => {
+    process.nextTick(() => {
+      processMock.emit('close', 0)
+    })
+
+    return true
+  })
+
+  return processMock
+}
 
 describe('action', () => {
   beforeEach(() => {
     jest.clearAllMocks()
 
-    debugMock = jest.spyOn(core, 'debug').mockImplementation()
-    errorMock = jest.spyOn(core, 'error').mockImplementation()
-    getInputMock = jest.spyOn(core, 'getInput').mockImplementation()
+    getInputMock = jest.spyOn(core, 'getInput').mockReturnValue('')
     setFailedMock = jest.spyOn(core, 'setFailed').mockImplementation()
-    setOutputMock = jest.spyOn(core, 'setOutput').mockImplementation()
   })
 
-  it('sets the time output', async () => {
-    // Set the action's inputs as return values from core.getInput()
+  afterEach(() => {
+    process.removeAllListeners('SIGINT')
+    process.removeAllListeners('SIGTERM')
+  })
+
+  it('marks the action as failed for an invalid timeout', async () => {
     getInputMock.mockImplementation(name => {
       switch (name) {
-        case 'milliseconds':
-          return '500'
+        case 'timeout':
+          return '0'
+        case 'gdb_target_host':
+          return 'localhost:3333'
+        case 'executable':
+          return 'firmware.elf'
+        case 'wait_for_msg':
+          return 'DONE'
         default:
           return ''
       }
     })
 
     await main.run()
-    expect(runMock).toHaveReturned()
 
-    // Verify that all of the core library functions were called correctly
-    expect(debugMock).toHaveBeenNthCalledWith(1, 'Waiting 500 milliseconds ...')
-    expect(debugMock).toHaveBeenNthCalledWith(
-      2,
-      expect.stringMatching(timeRegex)
+    expect(spawnMock).not.toHaveBeenCalled()
+    expect(setFailedMock).toHaveBeenCalledWith(
+      'Invalid timeout value: 0. Must be a positive number.'
     )
-    expect(debugMock).toHaveBeenNthCalledWith(
-      3,
-      expect.stringMatching(timeRegex)
-    )
-    expect(setOutputMock).toHaveBeenNthCalledWith(
-      1,
-      'time',
-      expect.stringMatching(timeRegex)
-    )
-    expect(errorMock).not.toHaveBeenCalled()
   })
 
-  it('sets a failed status', async () => {
-    // Set the action's inputs as return values from core.getInput()
+  it('runs gdb and completes when the target message is received', async () => {
+    const processMock = createMockGdbProcess()
+
     getInputMock.mockImplementation(name => {
       switch (name) {
-        case 'milliseconds':
-          return 'this is not a number'
+        case 'timeout':
+          return '5'
+        case 'gdb_target_host':
+          return 'localhost:3333'
+        case 'executable':
+          return 'firmware.elf'
+        case 'wait_for_msg':
+          return 'DONE'
         default:
           return ''
       }
     })
 
-    await main.run()
-    expect(runMock).toHaveReturned()
+    spawnMock.mockImplementation(() => {
+      process.nextTick(() => {
+        processMock.stdout.emit('data', Buffer.from('DONE\n'))
+      })
 
-    // Verify that all of the core library functions were called correctly
-    expect(setFailedMock).toHaveBeenNthCalledWith(
-      1,
-      'milliseconds not a number'
+      return processMock as unknown as ChildProcess
+    })
+
+    await main.run()
+
+    expect(path.resolve('firmware.elf')).toBe(
+      'C:\\Users\\avlaa\\Desktop\\Projects\\run_tests_on_chip_action\\firmware.elf'
     )
-    expect(errorMock).not.toHaveBeenCalled()
+    expect(spawnMock).toHaveBeenCalledWith(
+      'arm-none-eabi-gdb',
+      [path.resolve('firmware.elf')],
+      {
+        stdio: ['pipe', 'pipe', 'pipe']
+      }
+    )
+    expect(processMock.stdin.write).toHaveBeenCalledWith(
+      'target remote localhost:3333\n'
+    )
+    expect(processMock.stdin.write).toHaveBeenCalledWith('set pagination off\n')
+    expect(processMock.stdin.write).toHaveBeenCalledWith('load\n')
+    expect(processMock.stdin.write).toHaveBeenCalledWith(
+      'monitor arm semihosting enable\n'
+    )
+    expect(processMock.stdin.write).toHaveBeenCalledWith(
+      'monitor arm semihosting_fileio enable\n'
+    )
+    expect(processMock.stdin.write).toHaveBeenCalledWith('continue\n')
+    expect(processMock.kill).toHaveBeenCalled()
+    expect(setFailedMock).not.toHaveBeenCalled()
   })
 })
