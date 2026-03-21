@@ -17,7 +17,7 @@
 
 ```yml
 - name: Run on chip tests
-  uses: aps-m/run_tests_on_chip_action@master
+  uses: aps-m/run_tests_on_chip_action@v1
   with:
     timeout: 250
     gdb_target_host: 'localhost:3333'
