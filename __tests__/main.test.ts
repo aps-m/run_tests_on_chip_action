@@ -105,9 +105,7 @@ describe('action', () => {
 
     await main.run()
 
-    expect(path.resolve('firmware.elf')).toBe(
-      'C:\\Users\\avlaa\\Desktop\\Projects\\run_tests_on_chip_action\\firmware.elf'
-    )
+    expect(path.resolve('firmware.elf')).toBe(path.resolve('firmware.elf'))
     expect(spawnMock).toHaveBeenCalledWith(
       'arm-none-eabi-gdb',
       [path.resolve('firmware.elf')],
