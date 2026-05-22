@@ -99,7 +99,7 @@ async function runGDBAndWaitForMessage(
         console.error(`❌ ${line}`)
         failed_count++
       } else if (line.startsWith('Skip [')) {
-        console.log(`🟠 ${line}`)
+        console.log(`🟡 ${line}`)
       } else {
         console.log(line)
       }
