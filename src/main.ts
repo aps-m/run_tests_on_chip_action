@@ -98,6 +98,8 @@ async function runGDBAndWaitForMessage(
       } else if (line.startsWith('Fail [')) {
         console.error(`❌ ${line}`)
         failed_count++
+      } else if (line.startsWith('Skip [')) {
+        console.log(`🟠 ${line}`)
       } else {
         console.log(line)
       }

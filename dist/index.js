@@ -31323,6 +31323,9 @@ async function runGDBAndWaitForMessage(executablePath, targetMessage, gdbTargetH
                 console.error(`❌ ${line}`);
                 failed_count++;
             }
+            else if (line.startsWith('Skip [')) {
+                console.log(`🟠 ${line}`);
+            }
             else {
                 console.log(line);
             }
