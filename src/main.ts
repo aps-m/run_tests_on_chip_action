@@ -6,6 +6,35 @@ import * as path from 'path'
 let gdbProcess: ChildProcess | null = null
 let isAborted = false
 
+type TestResult = 'Pass' | 'Fail' | 'Skip'
+
+const TEST_RESULT_ICONS: Record<TestResult, string> = {
+  Pass: '✅',
+  Fail: '❌',
+  Skip: '⚠️'
+}
+
+const ESC = String.fromCharCode(27)
+const TEST_RESULT_PREFIXES: readonly (readonly [string, TestResult])[] = [
+  ['Pass [', 'Pass'],
+  ['Fail [', 'Fail'],
+  ['Skip [', 'Skip'],
+  [`✅ ${ESC}[32mPass${ESC}[0m [`, 'Pass'],
+  [`❌ ${ESC}[31mFail${ESC}[0m [`, 'Fail'],
+  [`⚠️ ${ESC}[33mSkip${ESC}[0m [`, 'Skip']
+]
+
+export function getTestResult(line: string): TestResult | null {
+  return (
+    TEST_RESULT_PREFIXES.find(([prefix]) => line.startsWith(prefix))?.[1] ??
+    null
+  )
+}
+
+function hasTestResultIcon(line: string): boolean {
+  return /^(?:✅|❌|⚠️?)/.test(line)
+}
+
 // Обработчик сигналов для немедленного завершения при отмене
 function setupSignalHandlers(): void {
   const handleSignal = (signal: string): void => {
@@ -93,15 +122,17 @@ async function runGDBAndWaitForMessage(
     let targetMessageFound = false
 
     function processLine(line: string): void {
-      if (line.startsWith('Pass [')) {
-        console.log(`✅ ${line}`)
-      } else if (line.startsWith('Fail [')) {
-        console.error(`❌ ${line}`)
+      const testResult = getTestResult(line)
+      const formattedLine =
+        testResult !== null && !hasTestResultIcon(line)
+          ? `${TEST_RESULT_ICONS[testResult]} ${line}`
+          : line
+
+      if (testResult === 'Fail') {
+        console.error(formattedLine)
         failed_count++
-      } else if (line.startsWith('Skip [')) {
-        console.log(`⚠️ ${line}`)
       } else {
-        console.log(line)
+        console.log(formattedLine)
       }
 
       if (targetMessage !== '') {

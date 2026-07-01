@@ -129,3 +129,27 @@ describe('action', () => {
     expect(setFailedMock).not.toHaveBeenCalled()
   })
 })
+
+describe('getTestResult', () => {
+  it.each([
+    ['Pass [97] test_standardConfig() [1.0 ms]', 'Pass'],
+    ['Fail [96] test_standardConfig() [363.9 ms]', 'Fail'],
+    ['Skip [327] test_standardConfig() [135.6 ms]', 'Skip'],
+    ['✅ \x1b[32mPass\x1b[0m [97] test_standardConfig()', 'Pass'],
+    ['❌ \x1b[31mFail\x1b[0m [96] test_standardConfig()', 'Fail'],
+    ['⚠️ \x1b[33mSkip\x1b[0m [327] test_standardConfig()', 'Skip']
+  ])('recognizes "%s"', (line, expected) => {
+    expect(main.getTestResult(line)).toBe(expected)
+  })
+
+  it.each([
+    'ordinary log line',
+    'Failing to start',
+    'Pass test without an index',
+    '✅ unrelated message',
+    '✅ Pass [97] test without ANSI colors',
+    '\x1b[31mFail\x1b[0m [96] test without an icon'
+  ])('ignores "%s"', line => {
+    expect(main.getTestResult(line)).toBeNull()
+  })
+})

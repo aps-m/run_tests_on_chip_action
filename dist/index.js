@@ -31247,13 +31247,35 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.run = void 0;
+exports.run = exports.getTestResult = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 const child_process_1 = __nccwpck_require__(2081);
 const path = __importStar(__nccwpck_require__(1017));
 // Глобальная ссылка на GDB процесс для обработки сигналов отмены
 let gdbProcess = null;
 let isAborted = false;
+const TEST_RESULT_ICONS = {
+    Pass: '✅',
+    Fail: '❌',
+    Skip: '⚠️'
+};
+const ESC = String.fromCharCode(27);
+const TEST_RESULT_PREFIXES = [
+    ['Pass [', 'Pass'],
+    ['Fail [', 'Fail'],
+    ['Skip [', 'Skip'],
+    [`✅ ${ESC}[32mPass${ESC}[0m [`, 'Pass'],
+    [`❌ ${ESC}[31mFail${ESC}[0m [`, 'Fail'],
+    [`⚠️ ${ESC}[33mSkip${ESC}[0m [`, 'Skip']
+];
+function getTestResult(line) {
+    return (TEST_RESULT_PREFIXES.find(([prefix]) => line.startsWith(prefix))?.[1] ??
+        null);
+}
+exports.getTestResult = getTestResult;
+function hasTestResultIcon(line) {
+    return /^(?:✅|❌|⚠️?)/.test(line);
+}
 // Обработчик сигналов для немедленного завершения при отмене
 function setupSignalHandlers() {
     const handleSignal = (signal) => {
@@ -31316,18 +31338,16 @@ async function runGDBAndWaitForMessage(executablePath, targetMessage, gdbTargetH
         let failed_count = 0;
         let targetMessageFound = false;
         function processLine(line) {
-            if (line.startsWith('Pass [')) {
-                console.log(`✅ ${line}`);
-            }
-            else if (line.startsWith('Fail [')) {
-                console.error(`❌ ${line}`);
+            const testResult = getTestResult(line);
+            const formattedLine = testResult !== null && !hasTestResultIcon(line)
+                ? `${TEST_RESULT_ICONS[testResult]} ${line}`
+                : line;
+            if (testResult === 'Fail') {
+                console.error(formattedLine);
                 failed_count++;
             }
-            else if (line.startsWith('Skip [')) {
-                console.log(`🟡 ${line}`);
-            }
             else {
-                console.log(line);
+                console.log(formattedLine);
             }
             if (targetMessage !== '') {
                 if (line.startsWith(targetMessage)) {
