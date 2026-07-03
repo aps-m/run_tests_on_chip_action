@@ -128,6 +128,45 @@ describe('action', () => {
     expect(processMock.kill).toHaveBeenCalled()
     expect(setFailedMock).not.toHaveBeenCalled()
   })
+
+  it('marks the action as failed when gdb reports a fatal target signal', async () => {
+    const processMock = createMockGdbProcess()
+
+    getInputMock.mockImplementation(name => {
+      switch (name) {
+        case 'timeout':
+          return '5'
+        case 'gdb_target_host':
+          return 'localhost:3333'
+        case 'executable':
+          return 'firmware.elf'
+        case 'wait_for_msg':
+          return 'DONE'
+        default:
+          return ''
+      }
+    })
+
+    spawnMock.mockImplementation(() => {
+      process.nextTick(() => {
+        processMock.stdout.emit(
+          'data',
+          Buffer.from(
+            'Program received signal SIGTRAP, Trace/breakpoint trap.\n'
+          )
+        )
+      })
+
+      return processMock as unknown as ChildProcess
+    })
+
+    await main.run()
+
+    expect(processMock.kill).toHaveBeenCalled()
+    expect(setFailedMock).toHaveBeenCalledWith(
+      'Target stopped with a fatal signal: Program received signal SIGTRAP, Trace/breakpoint trap.'
+    )
+  })
 })
 
 describe('getTestResult', () => {
@@ -151,5 +190,36 @@ describe('getTestResult', () => {
     '\x1b[31mFail\x1b[0m [96] test without an icon'
   ])('ignores "%s"', line => {
     expect(main.getTestResult(line)).toBeNull()
+  })
+})
+
+describe('getGdbFatalError', () => {
+  it.each([
+    [
+      'unknown/unexpected STLINK status code 0x18',
+      'GDB/STLINK reported an unexpected status: unknown/unexpected STLINK status code 0x18'
+    ],
+    [
+      'Program received signal SIGTRAP, Trace/breakpoint trap.',
+      'Target stopped with a fatal signal: Program received signal SIGTRAP, Trace/breakpoint trap.'
+    ],
+    [
+      'Program received signal SIGSEGV, Segmentation fault.',
+      'Target stopped with a fatal signal: Program received signal SIGSEGV, Segmentation fault.'
+    ],
+    [
+      'Remote communication error.  Target disconnected.',
+      'GDB remote communication failed: Remote communication error.  Target disconnected.'
+    ]
+  ])('recognizes "%s"', (line, expected) => {
+    expect(main.getGdbFatalError(line)).toBe(expected)
+  })
+
+  it.each([
+    'FS: The file "test_files/valid_configs/00194.apscfg" is open.',
+    'Pass [97] test_standardConfig() [1.0 ms]',
+    'Transfer rate: 1024 KB/sec'
+  ])('ignores "%s"', line => {
+    expect(main.getGdbFatalError(line)).toBeNull()
   })
 })

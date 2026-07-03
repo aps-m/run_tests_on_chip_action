@@ -31247,7 +31247,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.run = exports.getTestResult = void 0;
+exports.run = exports.getGdbFatalError = exports.getTestResult = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 const child_process_1 = __nccwpck_require__(2081);
 const path = __importStar(__nccwpck_require__(1017));
@@ -31268,11 +31268,28 @@ const TEST_RESULT_PREFIXES = [
     [`❌ ${ESC}[31mFail${ESC}[0m [`, 'Fail'],
     [`⚠️ ${ESC}[33mSkip${ESC}[0m [`, 'Skip']
 ];
+const GDB_FATAL_ERROR_PATTERNS = [
+    [
+        /unknown\/unexpected STLINK status code/i,
+        'GDB/STLINK reported an unexpected status'
+    ],
+    [
+        /^Program received signal SIG(?:TRAP|SEGV|BUS|ILL|ABRT|FPE)\b/,
+        'Target stopped with a fatal signal'
+    ],
+    [/^Remote communication error\./, 'GDB remote communication failed'],
+    [/^Remote connection closed\b/, 'GDB remote connection was closed']
+];
 function getTestResult(line) {
     return (TEST_RESULT_PREFIXES.find(([prefix]) => line.startsWith(prefix))?.[1] ??
         null);
 }
 exports.getTestResult = getTestResult;
+function getGdbFatalError(line) {
+    const fatalError = GDB_FATAL_ERROR_PATTERNS.find(([pattern]) => pattern.test(line));
+    return fatalError !== undefined ? `${fatalError[1]}: ${line}` : null;
+}
+exports.getGdbFatalError = getGdbFatalError;
 function hasTestResultIcon(line) {
     return /^(?:✅|❌|⚠️?)/.test(line);
 }
@@ -31337,12 +31354,30 @@ async function runGDBAndWaitForMessage(executablePath, targetMessage, gdbTargetH
         let stderrBuffer = '';
         let failed_count = 0;
         let targetMessageFound = false;
+        let fatalError = null;
+        let timeoutHandle = null;
+        function stopGdbWithError(error) {
+            if (fatalError !== null) {
+                return;
+            }
+            fatalError = error;
+            if (timeoutHandle !== null) {
+                clearTimeout(timeoutHandle);
+            }
+            gdb.kill();
+        }
         function processLine(line) {
             const testResult = getTestResult(line);
+            const gdbFatalError = getGdbFatalError(line);
             const formattedLine = testResult !== null && !hasTestResultIcon(line)
                 ? `${TEST_RESULT_ICONS[testResult]} ${line}`
                 : line;
-            if (testResult === 'Fail') {
+            if (gdbFatalError !== null) {
+                console.error(formattedLine);
+                stopGdbWithError(new Error(gdbFatalError));
+                return;
+            }
+            else if (testResult === 'Fail') {
                 console.error(formattedLine);
                 failed_count++;
             }
@@ -31353,13 +31388,17 @@ async function runGDBAndWaitForMessage(executablePath, targetMessage, gdbTargetH
                 if (line.startsWith(targetMessage)) {
                     console.log('Tag message was found!');
                     targetMessageFound = true;
-                    clearTimeout(timeoutHandle);
+                    if (timeoutHandle !== null) {
+                        clearTimeout(timeoutHandle);
+                    }
                     gdb.kill();
                 }
             }
             else if (line.startsWith('Transfer rate:')) {
                 setTimeout(() => {
-                    clearTimeout(timeoutHandle);
+                    if (timeoutHandle !== null) {
+                        clearTimeout(timeoutHandle);
+                    }
                     gdb.kill();
                 }, 2000);
             }
@@ -31381,10 +31420,15 @@ async function runGDBAndWaitForMessage(executablePath, targetMessage, gdbTargetH
         });
         gdb.on('close', (code) => {
             console.log(`GDB finished with code: ${code}`);
-            clearTimeout(timeoutHandle);
+            if (timeoutHandle !== null) {
+                clearTimeout(timeoutHandle);
+            }
             gdbProcess = null;
             if (isAborted) {
                 reject(new Error('Action was cancelled'));
+            }
+            else if (fatalError !== null) {
+                reject(fatalError);
             }
             else if (targetMessage !== '' && !targetMessageFound) {
                 reject(new Error(`Target message "${targetMessage}" was not found`));
@@ -31398,7 +31442,9 @@ async function runGDBAndWaitForMessage(executablePath, targetMessage, gdbTargetH
         });
         gdb.on('error', (err) => {
             console.error('Error while GDB was starting... error message:', err);
-            clearTimeout(timeoutHandle);
+            if (timeoutHandle !== null) {
+                clearTimeout(timeoutHandle);
+            }
             gdbProcess = null;
             reject(err);
         });
@@ -31417,10 +31463,9 @@ async function runGDBAndWaitForMessage(executablePath, targetMessage, gdbTargetH
             gdb.stdin.write('monitor arm semihosting_fileio enable\n');
             gdb.stdin.write('continue\n');
         }
-        const timeoutHandle = setTimeout(() => {
+        timeoutHandle = setTimeout(() => {
             console.log('Timeout error. Finishing process...');
-            gdb.kill();
-            reject(new Error(`Timeout error: process exceeded ${timeoutSeconds} seconds`));
+            stopGdbWithError(new Error(`Timeout error: process exceeded ${timeoutSeconds} seconds`));
         }, timeoutSeconds * 1000);
     });
 }
