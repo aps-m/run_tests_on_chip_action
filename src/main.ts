@@ -247,6 +247,7 @@ async function runGDBAndWaitForMessage(
 
     gdb.stdin.write(`target remote ${gdbTargetHost}\n`)
     gdb.stdin.write('set pagination off\n')
+    gdb.stdin.write('monitor reset halt\n')
     gdb.stdin.write('load\n')
 
     if (targetMessage === '') {
@@ -258,6 +259,7 @@ async function runGDBAndWaitForMessage(
       console.log('Waiting for message:', targetMessage)
       gdb.stdin.write('monitor arm semihosting enable\n')
       gdb.stdin.write('monitor arm semihosting_fileio enable\n')
+      gdb.stdin.write('monitor reset halt\n')
       gdb.stdin.write('continue\n')
     }
 

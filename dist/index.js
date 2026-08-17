@@ -31645,6 +31645,7 @@ async function runGDBAndWaitForMessage(executablePath, targetMessage, gdbTargetH
         });
         gdb.stdin.write(`target remote ${gdbTargetHost}\n`);
         gdb.stdin.write('set pagination off\n');
+        gdb.stdin.write('monitor reset halt\n');
         gdb.stdin.write('load\n');
         if (targetMessage === '') {
             console.log('No message to wait for. Waiting elf file load finished...');
@@ -31656,6 +31657,7 @@ async function runGDBAndWaitForMessage(executablePath, targetMessage, gdbTargetH
             console.log('Waiting for message:', targetMessage);
             gdb.stdin.write('monitor arm semihosting enable\n');
             gdb.stdin.write('monitor arm semihosting_fileio enable\n');
+            gdb.stdin.write('monitor reset halt\n');
             gdb.stdin.write('continue\n');
         }
         timeoutHandle = setTimeout(() => {

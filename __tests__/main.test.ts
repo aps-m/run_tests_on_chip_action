@@ -113,18 +113,18 @@ describe('action', () => {
         stdio: ['pipe', 'pipe', 'pipe']
       }
     )
-    expect(processMock.stdin.write).toHaveBeenCalledWith(
-      'target remote localhost:3333\n'
-    )
-    expect(processMock.stdin.write).toHaveBeenCalledWith('set pagination off\n')
-    expect(processMock.stdin.write).toHaveBeenCalledWith('load\n')
-    expect(processMock.stdin.write).toHaveBeenCalledWith(
-      'monitor arm semihosting enable\n'
-    )
-    expect(processMock.stdin.write).toHaveBeenCalledWith(
-      'monitor arm semihosting_fileio enable\n'
-    )
-    expect(processMock.stdin.write).toHaveBeenCalledWith('continue\n')
+    expect(
+      processMock.stdin.write.mock.calls.map(([command]) => command)
+    ).toEqual([
+      'target remote localhost:3333\n',
+      'set pagination off\n',
+      'monitor reset halt\n',
+      'load\n',
+      'monitor arm semihosting enable\n',
+      'monitor arm semihosting_fileio enable\n',
+      'monitor reset halt\n',
+      'continue\n'
+    ])
     expect(processMock.kill).toHaveBeenCalled()
     expect(setFailedMock).not.toHaveBeenCalled()
   })
